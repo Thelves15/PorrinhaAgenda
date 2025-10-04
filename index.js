@@ -32,7 +32,7 @@ for (const file of commandFiles) {
 
 // Conecta SQLite
 const db = new sqlite3.Database('./database/database.sqlite', (err) => {
-    if (err) console.error(err.message);
+    if (err) console.error('Erro SQLite:', err.message);
     else console.log('Conectado ao banco SQLite!');
 });
 
@@ -62,13 +62,20 @@ client.once('clientReady', async () => {
 
     try {
         const canalAgenda = await client.channels.fetch(process.env.CANAL_AGENDA);
-        if (!canalAgenda.isTextBased()) return console.error('CANAL_AGENDA não é um canal de texto.');
+        if (!canalAgenda || !canalAgenda.isTextBased()) {
+            return console.error('CANAL_AGENDA inválido ou não é um canal de texto.');
+        }
 
         // Verifica mensagens fixadas
-        const pinnedMessages = await canalAgenda.messages.fetchPins();
-        let jaFixada = pinnedMessages.find(msg => msg.author.id === client.user.id);
+        let pinnedMessages;
+        try {
+            pinnedMessages = await canalAgenda.messages.fetchPinned();
+        } catch {
+            pinnedMessages = new Map();
+        }
 
-        // Se não tiver, envia e fixa
+        const jaFixada = pinnedMessages.find?.(msg => msg.author.id === client.user.id);
+
         if (!jaFixada) {
             const row = new ActionRowBuilder()
                 .addComponents(
@@ -88,9 +95,13 @@ client.once('clientReady', async () => {
             });
 
             await mensagem.pin().catch(err => console.error('Erro ao fixar mensagem:', err));
+            console.log('Mensagem com botões enviada e fixada!');
+        } else {
+            console.log('Mensagem já estava fixada. Nada foi enviado.');
         }
+
     } catch (err) {
-        console.error('Erro ao enviar/fixar mensagem:', err);
+        console.error('Erro ao processar canal ou enviar mensagem:', err);
     }
 
     // Inicia cron de lembretes
@@ -151,11 +162,10 @@ client.on('interactionCreate', async interaction => {
         if (!command) return;
 
         try {
-            await interaction.deferReply();
             await command.execute(interaction, db);
         } catch (err) {
             console.error(err);
-            await interaction.editReply({ content: '❌ Erro ao executar comando.' });
+            await interaction.reply({ content: 'Erro ao executar comando.', ephemeral: true });
         }
     }
 });
