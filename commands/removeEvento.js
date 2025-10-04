@@ -1,21 +1,17 @@
-// commands/removeEvento.js
-module.exports = {
-    data: {
-        name: 'removeevento',
-        description: 'Remove um evento pelo ID',
-        options: [
-            {
-                name: 'id',
-                type: 4, // tipo inteiro
-                description: 'ID do evento a ser removido',
-                required: true
-            }
-        ]
-    },
-    async execute(interaction, db) {
-        await interaction.deferReply({ ephemeral: true }); // evita timeout
+const { SlashCommandBuilder } = require('discord.js');
 
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('removeevento')
+        .setDescription('Remove um evento pelo ID')
+        .addIntegerOption(option =>
+            option.setName('id')
+                .setDescription('ID do evento')
+                .setRequired(true)),
+
+    async execute(interaction, db) {
         const id = interaction.options.getInteger('id');
+        await interaction.deferReply({ ephemeral: true });
 
         db.run(`DELETE FROM eventos WHERE id = ?`, [id], function(err) {
             if (err) {
@@ -24,10 +20,10 @@ module.exports = {
             }
 
             if (this.changes === 0) {
-                return interaction.editReply(`❌ Nenhum evento encontrado com ID #${id}.`);
+                return interaction.editReply(`❌ Nenhum evento encontrado com o ID ${id}.`);
             }
 
-            interaction.editReply(`✅ Evento #${id} removido com sucesso!`);
+            interaction.editReply(`✅ Evento #${id} removido com sucesso.`);
         });
     }
 };

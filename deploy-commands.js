@@ -1,50 +1,49 @@
 require('dotenv').config();
 const { REST, Routes, SlashCommandBuilder } = require('discord.js');
 
-// Define todos os comandos
 const commands = [
     new SlashCommandBuilder()
         .setName('addevento')
-        .setDescription('Adiciona uma prova ou trabalho ao calendário')
+        .setDescription('Adiciona uma prova ou trabalho')
         .addStringOption(option =>
             option.setName('tipo')
-                  .setDescription('Tipo de evento: prova ou trabalho')
-                  .setRequired(true)
-                  .addChoices(
-                      { name: 'Prova', value: 'prova' },
-                      { name: 'Trabalho', value: 'trabalho' }
-                  ))
-        .addStringOption(option =>
+                .setDescription('Tipo de evento: prova ou trabalho')
+                .setRequired(true)
+                .addChoices(
+                    { name: 'Prova', value: 'prova' },
+                    { name: 'Trabalho', value: 'trabalho' }
+                ))
+        .addStringOption(option => 
             option.setName('materia')
-                  .setDescription('Nome da disciplina')
-                  .setRequired(true))
+                .setDescription('Matéria do evento')
+                .setRequired(true))
         .addStringOption(option =>
             option.setName('descricao')
-                  .setDescription('Descrição do evento')
-                  .setRequired(true))
+                .setDescription('Descrição do evento')
+                .setRequired(true))
         .addStringOption(option =>
             option.setName('data')
-                  .setDescription('Data do evento (DD/MM/YYYY)')
-                  .setRequired(true))
+                .setDescription('Data do evento (DD/MM/YYYY)')
+                .setRequired(true))
         .addStringOption(option =>
             option.setName('hora')
-                  .setDescription('Horário do evento (opcional)')
-                  .setRequired(false)),
+                .setDescription('Hora do evento (HH:MM) opcional')
+                .setRequired(false)),
 
     new SlashCommandBuilder()
         .setName('eventos')
-        .setDescription('Lista todos os eventos futuros'),
+        .setDescription('Lista todos os eventos cadastrados'),
 
     new SlashCommandBuilder()
-        .setName('remove')
+        .setName('removeevento')
         .setDescription('Remove um evento pelo ID')
         .addIntegerOption(option =>
             option.setName('id')
-                  .setDescription('ID do evento a ser removido')
-                  .setRequired(true))
-].map(command => command.toJSON());
+                .setDescription('ID do evento a remover')
+                .setRequired(true))
+]
+.map(command => command.toJSON());
 
-// Cria instância do REST para registrar comandos
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
@@ -56,8 +55,8 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
             { body: commands }
         );
 
-        console.log('✅ Comandos registrados com sucesso!');
-    } catch (error) {
-        console.error(error);
+        console.log('Comandos registrados com sucesso!');
+    } catch (err) {
+        console.error('Erro ao registrar comandos:', err);
     }
 })();
