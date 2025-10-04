@@ -1,30 +1,30 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, Collection, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, Collection } = require('discord.js');
 const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
 const fs = require('fs');
-const cron = require('node-cron');
 
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds],
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
     partials: [Partials.Channel]
 });
 
-// Collection de comandos
+// Collection para comandos
 client.commands = new Collection();
-
-// Carregar comandos
 const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
 for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
     client.commands.set(command.data.name, command);
 }
 
-// SQLite
-const db = new sqlite3.Database('./database/database.sqlite', err => {
-    if (err) console.error(err.message);
-    else console.log('Conectado ao SQLite!');
+// Caminho absoluto para SQLite
+const dbPath = path.join(process.cwd(), 'database', 'database.sqlite');
+const db = new sqlite3.Database(dbPath, (err) => {
+    if (err) console.error('Erro ao abrir DB:', err.message);
+    else console.log('Conectado ao banco SQLite!');
 });
 
+// Criar tabela se não existir
 db.run(`CREATE TABLE IF NOT EXISTS eventos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tipo TEXT,
@@ -35,55 +35,63 @@ db.run(`CREATE TABLE IF NOT EXISTS eventos (
 )`, () => console.log('Tabela eventos pronta!'));
 
 // Função para criar evento
-async function criarEvento(tipo, materia, descricao, data, hora, interaction) {
+async function criarEvento(db, tipo, materia, descricao, data, hora, interaction) {
     db.run(`INSERT INTO eventos (tipo, materia, descricao, data, hora) VALUES (?, ?, ?, ?, ?)`,
         [tipo, materia, descricao, data, hora],
         function(err) {
-            if (err) return interaction.editReply({ content: '❌ Erro ao registrar evento.', ephemeral: true });
-            interaction.editReply({ content: `✅ Evento registrado: [${tipo}] ${materia} - ${descricao} em ${data} ${hora || ''}`, ephemeral: true });
+            if (err) return interaction.editReply({ content: '❌ Erro ao registrar evento.', flags: 64 });
+            interaction.editReply({ content: `✅ Evento registrado: [${tipo}] ${materia} - ${descricao} em ${data} ${hora || ''}`, flags: 64 });
         }
     );
 }
 
-// Bot online
-client.once('ready', async () => {
-    console.log(`${client.user.tag} está online!`);
+// Bot pronto
+client.once('clientReady', async () => {
+    console.log(`Bot ${client.user.tag} está online!`);
 
-    // Canal de agenda
-    const canalAgenda = await client.channels.fetch(process.env.CANAL_AGENDA);
-    if (!canalAgenda.isTextBased()) return console.error('CANAL_AGENDA não é um canal de texto.');
+    try {
+        const canalAgenda = await client.channels.fetch(process.env.CANAL_AGENDA);
+        if (!canalAgenda.isTextBased()) return console.error('CANAL_AGENDA não é um canal de texto.');
 
-    // Botões
-    const row = new ActionRowBuilder()
-        .addComponents(
-            new ButtonBuilder().setCustomId('addProva').setLabel('Adicionar Prova').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('addTrabalho').setLabel('Adicionar Trabalho').setStyle(ButtonStyle.Success)
-        );
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('addProva')
+                    .setLabel('Adicionar Prova')
+                    .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                    .setCustomId('addTrabalho')
+                    .setLabel('Adicionar Trabalho')
+                    .setStyle(ButtonStyle.Success)
+            );
 
-    // Fixar mensagem inicial
-    const pinnedMessages = await canalAgenda.messages.fetchPinned();
-    const jaFixada = pinnedMessages.find(msg => msg.author.id === client.user.id);
-    if (!jaFixada) {
-        const mensagem = await canalAgenda.send({
-            content: '📌 **PorrinhaAgenda**\nClique nos botões para adicionar provas ou trabalhos!',
-            components: [row]
-        });
-        await mensagem.pin();
+        // Pega mensagens fixadas
+        const pinnedMessages = await canalAgenda.messages.fetchPins();
+        const jaFixada = pinnedMessages.find(msg => msg.author.id === client.user.id);
+
+        if (!jaFixada) {
+            const mensagem = await canalAgenda.send({
+                content: '📌 **PorrinhaAgenda**\nClique nos botões para adicionar provas ou trabalhos!',
+                components: [row]
+            });
+            await mensagem.pin();
+        }
+
+    } catch (err) {
+        console.error('Erro ao enviar/fixar mensagem:', err);
     }
 
-    // Cron de lembretes
+    // Inicia cron de lembretes
     require('./cron/reminders')(client, db);
 });
 
 // Interações
 client.on('interactionCreate', async interaction => {
     try {
-        // Botão
         if (interaction.isButton()) {
-            const tipo = interaction.customId === 'addProva' ? 'prova' : 'trabalho';
             const modal = new ModalBuilder()
-                .setCustomId(tipo)
-                .setTitle(tipo === 'prova' ? 'Adicionar Prova' : 'Adicionar Trabalho');
+                .setCustomId(interaction.customId)
+                .setTitle(interaction.customId === 'addProva' ? 'Adicionar Prova' : 'Adicionar Trabalho');
 
             const materiaInput = new TextInputBuilder().setCustomId('materia').setLabel('Matéria').setStyle(TextInputStyle.Short).setRequired(true);
             const descricaoInput = new TextInputBuilder().setCustomId('descricao').setLabel('Descrição').setStyle(TextInputStyle.Short).setRequired(true);
@@ -98,32 +106,28 @@ client.on('interactionCreate', async interaction => {
             );
 
             await interaction.showModal(modal);
-        }
 
-        // Modal submit
-        else if (interaction.isModalSubmit()) {
-            const tipo = interaction.customId;
+        } else if (interaction.isModalSubmit()) {
+            const tipo = interaction.customId === 'addProva' ? 'prova' : 'trabalho';
             const materia = interaction.fields.getTextInputValue('materia');
             const descricao = interaction.fields.getTextInputValue('descricao');
             const data = interaction.fields.getTextInputValue('data');
             const hora = interaction.fields.getTextInputValue('hora');
 
             await interaction.deferReply({ ephemeral: true });
-            criarEvento(tipo, materia, descricao, data, hora, interaction);
-        }
+            criarEvento(db, tipo, materia, descricao, data, hora, interaction);
 
-        // Comandos slash
-        else if (interaction.isCommand()) {
+        } else if (interaction.isCommand()) {
             const command = client.commands.get(interaction.commandName);
             if (!command) return;
             await command.execute(interaction, db);
         }
     } catch (err) {
-        console.error(err);
+        console.error('Erro na interação:', err);
         if (interaction.replied || interaction.deferred) {
-            await interaction.editReply({ content: '❌ Ocorreu um erro.' });
+            await interaction.editReply({ content: '❌ Algo deu errado.', ephemeral: true });
         } else {
-            await interaction.reply({ content: '❌ Ocorreu um erro.', ephemeral: true });
+            await interaction.reply({ content: '❌ Algo deu errado.', ephemeral: true });
         }
     }
 });
