@@ -99,6 +99,7 @@ client.on('interactionCreate', async interaction => {
                 .setCustomId(interaction.customId)
                 .setTitle(interaction.customId === 'addProva' ? 'Adicionar Prova' : 'Adicionar Trabalho');
 
+            // Inputs
             const materiaInput = new TextInputBuilder()
                 .setCustomId('materia')
                 .setLabel('Matéria')
@@ -129,6 +130,8 @@ client.on('interactionCreate', async interaction => {
             const row4 = new ActionRowBuilder().addComponents(horaInput);
 
             modal.addComponents(row1, row2, row3, row4);
+
+            // Mostra o modal diretamente sem deferReply
             await interaction.showModal(modal);
         }
     } else if (interaction.isModalSubmit()) {
@@ -138,7 +141,8 @@ client.on('interactionCreate', async interaction => {
         const data = interaction.fields.getTextInputValue('data');
         const hora = interaction.fields.getTextInputValue('hora');
 
-        await interaction.deferReply({ flags: 64 });
+        // Defer reply aqui, agora sim
+        await interaction.deferReply({ ephemeral: true });
         criarEvento(db, tipo, materia, descricao, data, hora, interaction);
     } else if (interaction.isCommand()) {
         const command = client.commands.get(interaction.commandName);
